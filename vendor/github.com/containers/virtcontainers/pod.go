@@ -804,6 +804,16 @@ func (p *Pod) startVM(netNsPath string) error {
 // Note that there is no corresponding stopProxy() since the proxy
 // stops itself.
 func (p *Pod) startProxy() error {
+	l := p.Logger()
+
+	// Make sure the VM is properly started
+	if err := p.hypervisor.waitPod(vmStartTimeout); err != nil {
+		return err
+	}
+
+	l.Info("VM started")
+
+	// Start the proxy
 	pid, uri, err := p.proxy.start(*p)
 	if err != nil {
 		return err
@@ -819,33 +829,45 @@ func (p *Pod) startProxy() error {
 
 	p.Logger().WithField("proxy-pid", pid).Info("proxy started")
 
+	// Register the proxy
+	proxyInfos, _, err := p.proxy.register(*p)
+	if err != nil {
+		return err
+	}
+	defer p.proxy.disconnect()
+
+	if len(proxyInfos) != len(p.containers) {
+		return fmt.Errorf("Retrieved %d proxy infos, expecting %d", len(proxyInfos), len(p.containers))
+	}
+
+	// Create containers processes
+	for idx := range p.containers {
+		p.containers[idx].process = newInitProcess(proxyInfos[idx].Token, p.containers[idx].id)
+	}
+
+	// Start the pod on the agent
+	if err := p.agent.startPod(*p); err != nil {
+		return err
+	}
+
+	for _, c := range p.containers {
+		if err := c.create(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // startShims registers all containers to the proxy and starts one
 // shim per container.
 func (p *Pod) startShims() error {
-	proxyInfos, url, err := p.proxy.register(*p)
-	if err != nil {
-		return err
-	}
-
-	if err := p.proxy.disconnect(); err != nil {
-		return err
-	}
-
-	if len(proxyInfos) != len(p.containers) {
-		return fmt.Errorf("Retrieved %d proxy infos, expecting %d", len(proxyInfos), len(p.containers))
-	}
-
 	shimCount := 0
 	for idx := range p.containers {
-		p.containers[idx].process = newInitProcess(proxyInfos[idx].Token, p.containers[idx].id)
-
 		shimParams := ShimParams{
 			Container: p.containers[idx].id,
 			Token:     p.containers[idx].process.Token,
-			URL:       url,
+			URL:       p.state.URL,
 			Console:   p.containers[idx].config.Cmd.Console,
 			Terminal:  p.containers[idx].config.Cmd.Interactive,
 			Detach:    p.containers[idx].config.Cmd.Detach,
@@ -881,20 +903,10 @@ func (p *Pod) start() error {
 
 	l := p.Logger()
 
-	if err := p.hypervisor.waitPod(vmStartTimeout); err != nil {
-		return err
-	}
-
-	l.Info("VM started")
-
 	if _, _, err := p.proxy.connect(*p, false); err != nil {
 		return err
 	}
 	defer p.proxy.disconnect()
-
-	if err := p.agent.startPod(*p); err != nil {
-		return err
-	}
 
 	// Pod is started
 	if err := p.startSetState(); err != nil {

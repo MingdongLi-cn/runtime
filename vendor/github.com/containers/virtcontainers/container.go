@@ -216,13 +216,23 @@ func (c *Container) GetAnnotations() map[string]string {
 	return c.config.Annotations
 }
 
+func (c *Container) create() error {
+	if _, _, err := c.pod.proxy.connect(*(c.pod), false); err != nil {
+		return err
+	}
+	defer c.pod.proxy.disconnect()
+
+	return c.pod.agent.createContainer(c.pod, c)
+}
+
 func (c *Container) startShim() error {
 	proxyInfo, url, err := c.pod.proxy.connect(*(c.pod), true)
 	if err != nil {
 		return err
 	}
+	defer c.pod.proxy.disconnect()
 
-	if err := c.pod.proxy.disconnect(); err != nil {
+	if err := c.pod.agent.createContainer(c.pod, c); err != nil {
 		return err
 	}
 
@@ -543,10 +553,6 @@ func (c *Container) start() error {
 	// Deduce additional system mount info that should be handled by the agent
 	// inside the VM
 	c.getSystemMountInfo()
-
-	if err := c.pod.agent.createContainer(c.pod, c); err != nil {
-		return err
-	}
 
 	if err := c.pod.agent.startContainer(*(c.pod), *c); err != nil {
 		c.Logger().WithError(err).Error("Failed to start container")

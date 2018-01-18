@@ -522,9 +522,7 @@ func (k *kataAgent) startContainer(pod Pod, c Container) error {
 		return err
 	}
 
-	// The Kata shim wants to be signaled when the init container
-	// is created. Sending the signal for all containers is harmless.
-	return signalShim(c.process.Pid, syscall.SIGUSR1)
+	return nil
 }
 
 func (k *kataAgent) stopContainer(pod Pod, c Container) error {
