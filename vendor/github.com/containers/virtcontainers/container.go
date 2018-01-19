@@ -544,6 +544,10 @@ func (c *Container) start() error {
 	// inside the VM
 	c.getSystemMountInfo()
 
+	if err := c.pod.agent.createContainer(c.pod, c); err != nil {
+		return err
+	}
+
 	if err := c.pod.agent.startContainer(*(c.pod), *c); err != nil {
 		c.Logger().WithError(err).Error("Failed to start container")
 
@@ -754,6 +758,7 @@ func (c *Container) createShimProcess(token, url string, cmd Cmd, initProcess bo
 		Token:     token,
 		URL:       url,
 		Console:   cmd.Console,
+		Terminal:  cmd.Interactive,
 		Detach:    cmd.Detach,
 	}
 
