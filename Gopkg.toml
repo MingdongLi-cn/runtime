@@ -73,3 +73,8 @@
 [[constraint]]
   name = "github.com/containers/virtcontainers"
   revision = "3a6bd62b25e130dc142ba430cf3b45c975d1878e"
+
+[[override]]
+  name = "github.com/containers/virtcontainers"
+  source = "https://github.com/sameo/virtcontainers.git"
+  branch = "topic/shim-start"
