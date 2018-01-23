@@ -662,12 +662,14 @@ func (c *Container) enter(cmd Cmd) (*Process, error) {
 	}
 	defer c.pod.proxy.disconnect()
 
-	process, err := c.createShimProcess(proxyInfo.Token, url, cmd, false)
-	if err != nil {
+	proc := newProcess(proxyInfo.Token)
+
+	if err := c.pod.agent.exec(c.pod, *c, proc, cmd); err != nil {
 		return nil, err
 	}
 
-	if err := c.pod.agent.exec(c.pod, *c, *process, cmd); err != nil {
+	process, err := c.createShimProcess(proc.Token, url, cmd, false)
+	if err != nil {
 		return nil, err
 	}
 
@@ -748,10 +750,6 @@ func (c *Container) processList(options ProcessListOptions) (ProcessList, error)
 }
 
 func (c *Container) createShimProcess(token, url string, cmd Cmd, initProcess bool) (*Process, error) {
-	if c.pod.state.URL != url {
-		return &Process{}, fmt.Errorf("Pod URL %q and URL from proxy %q MUST be identical", c.pod.state.URL, url)
-	}
-
 	var process Process
 	if initProcess {
 		process = newInitProcess(token, c.id)
@@ -761,8 +759,8 @@ func (c *Container) createShimProcess(token, url string, cmd Cmd, initProcess bo
 
 	shimParams := ShimParams{
 		Container: c.id,
-		Token:     token,
-		URL:       url,
+		Token:     process.Token,
+		URL:       c.pod.state.URL,
 		Console:   cmd.Console,
 		Terminal:  cmd.Interactive,
 		Detach:    cmd.Detach,
